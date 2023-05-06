@@ -15,6 +15,7 @@
 #include "iree/base/tracing.h"
 #include "iree/hal/drivers/cuda/context_wrapper.h"
 #include "iree/hal/drivers/cuda/cuda_allocator.h"
+#include "iree/hal/drivers/cuda/cuda_buffer.h"
 #include "iree/hal/drivers/cuda/cuda_event.h"
 #include "iree/hal/drivers/cuda/dynamic_symbols.h"
 #include "iree/hal/drivers/cuda/event_semaphore.h"
@@ -55,6 +56,13 @@ typedef struct iree_hal_cuda_device_t {
   iree_hal_cuda_tracing_context_t* tracing_context;
 
   iree_hal_allocator_t* device_allocator;
+  // TODO: move to a dedicated stream-ordered-allocator to manage.
+  struct {
+    // Used exclusively for DEVICE_LOCAL allocations.
+    CUmemoryPool device_local;
+    // Used for any host-visible/host-local memory types.
+    CUmemoryPool other;
+  } memory_pools;
 
   // Optional provider used for creating/configuring collective channels.
   iree_hal_channel_provider_t* channel_provider;
@@ -100,6 +108,42 @@ static iree_status_t iree_hal_cuda_device_check_params(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_cuda_create_memory_pool(
+    iree_hal_cuda_dynamic_symbols_t* syms, CUdevice cu_device,
+    iree_hal_cuda_memory_pool_params_t params, CUmemoryPool* out_pool) {
+  *out_pool = NULL;
+
+  CUmemPoolProps pool_props = {
+      .allocType = CU_MEM_ALLOCATION_TYPE_PINNED,
+      // TODO: allow sharing of certain pool memory types by fd/HANDLE.
+      .handleTypes = CU_MEM_HANDLE_TYPE_NONE,
+      .location =
+          {
+              .type = CU_MEM_LOCATION_TYPE_DEVICE,
+              .id = cu_device,
+          },
+      .win32SecurityAttributes = NULL,
+      .reserved = {0},
+  };
+
+  CUmemoryPool pool = NULL;
+  CUDA_RETURN_IF_ERROR(syms, cuMemPoolCreate(&pool, &pool_props),
+                       "cuMemPoolCreate");
+
+  iree_status_t status = CU_RESULT_TO_STATUS(
+      syms,
+      cuMemPoolSetAttribute(pool, CU_MEMPOOL_ATTR_RELEASE_THRESHOLD,
+                            &params.release_threshold),
+      "cuMemPoolSetAttribute");
+
+  if (iree_status_is_ok(status)) {
+    *out_pool = pool;
+  } else {
+    CUDA_IGNORE_ERROR(syms, cuMemPoolDestroy(pool));
+  }
+  return status;
+}
+
 static iree_status_t iree_hal_cuda_device_create_internal(
     iree_hal_driver_t* driver, iree_string_view_t identifier,
     const iree_hal_cuda_device_params_t* params, CUdevice cu_device,
@@ -138,6 +182,19 @@ static iree_status_t iree_hal_cuda_device_create_internal(
     status = iree_hal_cuda_allocator_create((iree_hal_device_t*)device,
                                             &device->context_wrapper, cu_device,
                                             stream, &device->device_allocator);
+  }
+
+  // Create memory pools.
+  // TODO: move to a dedicated pool manager.
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_cuda_create_memory_pool(
+        syms, cu_device, params->memory_pools.device_local,
+        &device->memory_pools.device_local);
+  }
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_cuda_create_memory_pool(syms, cu_device,
+                                              params->memory_pools.other,
+                                              &device->memory_pools.other);
   }
 
   if (iree_status_is_ok(status) &&
@@ -219,6 +276,16 @@ static void iree_hal_cuda_device_destroy(iree_hal_device_t* base_device) {
   // Buffers may have been retaining collective resources.
   iree_hal_channel_provider_release(device->channel_provider);
 
+  // Destroy memory pools that hold on to reserved memory.
+  if (device->memory_pools.device_local) {
+    CUDA_IGNORE_ERROR(device->context_wrapper.syms,
+                      cuMemPoolDestroy(device->memory_pools.device_local));
+  }
+  if (device->memory_pools.other) {
+    CUDA_IGNORE_ERROR(device->context_wrapper.syms,
+                      cuMemPoolDestroy(device->memory_pools.other));
+  }
+
   // TODO: support multiple streams.
   iree_hal_cuda_tracing_context_free(device->tracing_context);
   CUDA_IGNORE_ERROR(device->context_wrapper.syms,
@@ -274,7 +341,20 @@ static void iree_hal_cuda_replace_channel_provider(
 static iree_status_t iree_hal_cuda_device_trim(iree_hal_device_t* base_device) {
   iree_hal_cuda_device_t* device = iree_hal_cuda_device_cast(base_device);
   iree_arena_block_pool_trim(&device->block_pool);
-  return iree_hal_allocator_trim(device->device_allocator);
+  IREE_RETURN_IF_ERROR(iree_hal_allocator_trim(device->device_allocator));
+  // TODO: move to memory pool manager.
+  CUDA_RETURN_IF_ERROR(
+      device->context_wrapper.syms,
+      cuMemPoolTrimTo(
+          device->memory_pools.device_local,
+          device->params.memory_pools.device_local.minimum_capacity),
+      "cuMemPoolTrimTo");
+  CUDA_RETURN_IF_ERROR(
+      device->context_wrapper.syms,
+      cuMemPoolTrimTo(device->memory_pools.other,
+                      device->params.memory_pools.other.minimum_capacity),
+      "cuMemPoolTrimTo");
+  return iree_ok_status();
 }
 
 static iree_status_t iree_hal_cuda_device_query_i64(
@@ -468,6 +548,11 @@ iree_hal_cuda_device_query_semaphore_compatibility(
   return IREE_HAL_SEMAPHORE_COMPATIBILITY_HOST_ONLY;
 }
 
+// TODO: tracing of the allocations (just for sequencing).
+// TODO: implement multiple streams; today we only have one and queue_affinity
+//       is ignored.
+// TODO: implement proper semaphores in CUDA to ensure ordering and avoid
+//       the barrier here.
 static iree_status_t iree_hal_cuda_device_queue_alloca(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
@@ -475,27 +560,95 @@ static iree_status_t iree_hal_cuda_device_queue_alloca(
     iree_hal_allocator_pool_t pool, iree_hal_buffer_params_t params,
     iree_device_size_t allocation_size,
     iree_hal_buffer_t** IREE_RESTRICT out_buffer) {
-  // TODO(benvanik): queue-ordered allocations.
-  // TODO(benvanik): tracing of the allocations (just for sequencing).
+  iree_hal_cuda_device_t* device = iree_hal_cuda_device_cast(base_device);
+
+  iree_hal_buffer_params_canonicalize(&params);
+
+  // TODO: more pools and better selection; this is coarsely deciding between
+  // only device local (variables, constants, transients) and other (staging,
+  // external) but could use more buffer properties (including usage/export
+  // flags) to better isolate the different usage patterns and keep the pools
+  // operating with reasonable limits. We should be using the |pool| arg.
+  CUmemoryPool memory_pool =
+      iree_all_bits_set(params.type, IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL)
+          ? device->memory_pools.device_local
+          : device->memory_pools.other;
+
+  // NOTE: block on the semaphores here; we could avoid this by properly
+  // sequencing device work with semaphores. The CUDA HAL is not currently
+  // asynchronous.
   IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
                                                     iree_infinite_timeout()));
-  IREE_RETURN_IF_ERROR(iree_hal_allocator_allocate_buffer(
-      iree_hal_device_allocator(base_device), params, allocation_size,
-      iree_const_byte_span_empty(), out_buffer));
-  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_signal(signal_semaphore_list));
-  return iree_ok_status();
+
+  // Allocate from the pool; likely to fail in cases of virtual memory
+  // exhaustion.
+  CUdeviceptr device_ptr = 0;
+  iree_status_t status = CU_RESULT_TO_STATUS(
+      device->context_wrapper.syms,
+      cuMemAllocFromPoolAsync(&device_ptr, (size_t)allocation_size, memory_pool,
+                              device->stream),
+      "cuMemAllocFromPoolAsync");
+
+  // Wrap the allocated CUDA buffer in a HAL buffer.
+  iree_hal_buffer_t* buffer = NULL;
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_cuda_buffer_wrap(
+        iree_hal_device_allocator(base_device), params.type, params.access,
+        params.usage, allocation_size, /*byte_offset=*/0,
+        /*byte_length=*/allocation_size, IREE_HAL_CUDA_BUFFER_TYPE_DEVICE,
+        device_ptr, /*host_ptr=*/NULL, iree_hal_buffer_release_callback_null(),
+        &buffer);
+  }
+
+  if (iree_status_is_ok(status)) {
+    *out_buffer = buffer;
+  } else if (buffer) {
+    iree_hal_buffer_release(buffer);
+  } else {
+    CUDA_IGNORE_ERROR(device->context_wrapper.syms,
+                      cuMemFreeAsync(device_ptr, device->stream));
+  }
+
+  // Only signal if not returning a synchronous error - synchronous failure
+  // indicates that the stream is unchanged (it's not really since we waited
+  // above, but we at least won't deadlock like this).
+  if (iree_status_is_ok(status)) {
+    IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_signal(signal_semaphore_list));
+  }
+  return status;
 }
 
+// TODO: tracing of the allocations (just for sequencing).
+// TODO: implement multiple streams; today we only have one and queue_affinity
+//       is ignored.
+// TODO: implement proper semaphores in CUDA to ensure ordering and avoid
+//       the barrier here.
 static iree_status_t iree_hal_cuda_device_queue_dealloca(
     iree_hal_device_t* base_device, iree_hal_queue_affinity_t queue_affinity,
     const iree_hal_semaphore_list_t wait_semaphore_list,
     const iree_hal_semaphore_list_t signal_semaphore_list,
     iree_hal_buffer_t* buffer) {
-  // TODO(benvanik): queue-ordered allocations.
-  // TODO(benvanik): tracing of the allocations (just for sequencing).
-  IREE_RETURN_IF_ERROR(iree_hal_device_queue_barrier(
-      base_device, queue_affinity, wait_semaphore_list, signal_semaphore_list));
-  return iree_ok_status();
+  iree_hal_cuda_device_t* device = iree_hal_cuda_device_cast(base_device);
+
+  // NOTE: block on the semaphores here; we could avoid this by properly
+  // sequencing device work with semaphores. The CUDA HAL is not currently
+  // asynchronous.
+  IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_wait(wait_semaphore_list,
+                                                    iree_infinite_timeout()));
+
+  // Try to schedule the buffer for freeing.
+  CUdeviceptr device_ptr = iree_hal_cuda_buffer_device_pointer(buffer);
+  iree_status_t status = CU_RESULT_TO_STATUS(
+      device->context_wrapper.syms, cuMemFreeAsync(device_ptr, device->stream),
+      "cuMemFreeAsync");
+
+  // Only signal if not returning a synchronous error - synchronous failure
+  // indicates that the stream is unchanged (it's not really since we waited
+  // above, but we at least won't deadlock like this).
+  if (iree_status_is_ok(status)) {
+    IREE_RETURN_IF_ERROR(iree_hal_semaphore_list_signal(signal_semaphore_list));
+  }
+  return status;
 }
 
 static iree_status_t iree_hal_cuda_device_queue_execute(
