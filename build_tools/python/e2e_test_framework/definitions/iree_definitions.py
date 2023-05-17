@@ -144,7 +144,7 @@ class MLIRDialectType(Enum):
   """Imported MLIR dialect type."""
   NONE = "none"
   TOSA = "tosa"
-  STABLEHLO = "stablehlo"
+  STABLEHLO = "mhlo"
 
 
 @serialization.serializable(type_key="iree_import_configs")

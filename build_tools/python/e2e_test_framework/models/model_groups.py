@@ -5,7 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Defines the groups of models."""
 
-from e2e_test_framework.models import matmul, tflite_models, torch_models, tf_models
+from e2e_test_framework.models import matmul, tflite_models, torch_models, tf_models, jax_models
+
+# x86 models, single batch.
 
 # A list of models with thread configurations.
 # Note `0` represents sync execution.
@@ -64,6 +66,23 @@ x86_64_MODELS_AND_THREADS_EXPERIMENTAL = [
     # (torch_models.EFFICIENTNET_B7_FP32_TORCH, [8]),
 ]
 
+
+# Microkernels.
+
+MICRO_MATMUL = [
+    matmul.MATMUL_3456X1024X2048_FP16_MLIR,
+    matmul.MATMUL_3456X1024X2048_FP32_MLIR,
+    matmul.MATMUL_2560X2560X2560_FP16_MLIR,
+    matmul.MATMUL_2560X2560X2560_FP32_MLIR,
+]
+
+MICRO_MATMUL_SPLITK = [
+    matmul.MATMUL_128X256X8192_FP16_MLIR,
+    matmul.MATMUL_128X256X8192_FP32_MLIR,
+]
+
+# Batched Torch models.
+
 BERT_LARGE_TORCH_BATCHES = [
     torch_models.BERT_LARGE_1X384_FP32_TORCH,
     torch_models.BERT_LARGE_16X384_FP32_TORCH,
@@ -85,17 +104,8 @@ RESNET50_TORCH_BATCHES = [
     torch_models.RESNET50_2048X3X224X224_FP32_TORCH,
 ]
 
-MICRO_MATMUL = [
-    matmul.MATMUL_3456X1024X2048_FP16_MLIR,
-    matmul.MATMUL_3456X1024X2048_FP32_MLIR,
-    matmul.MATMUL_2560X2560X2560_FP16_MLIR,
-    matmul.MATMUL_2560X2560X2560_FP32_MLIR,
-]
 
-MICRO_MATMUL_SPLITK = [
-    matmul.MATMUL_128X256X8192_FP16_MLIR,
-    matmul.MATMUL_128X256X8192_FP32_MLIR,
-]
+# Batched Tensorflow models.
 
 BERT_LARGE_TF_BATCHES = [
     tf_models.BERT_LARGE_1X384_FP32_TF,
@@ -128,6 +138,23 @@ T5_LARGE_TF_BATCHES = [
     tf_models.T5_LARGE_512x512_FP32_TF,
 ]
 
+
+# Batched JAX models.
+
+BERT_LARGE_JAX_BATCHES = [
+    jax_models.BERT_LARGE_1X384_FP32_JAX,
+    jax_models.BERT_LARGE_16X384_FP32_JAX,
+    jax_models.BERT_LARGE_24X384_FP32_JAX,
+    jax_models.BERT_LARGE_32X384_FP32_JAX,
+    jax_models.BERT_LARGE_48X384_FP32_JAX,
+    jax_models.BERT_LARGE_64X384_FP32_JAX,
+    jax_models.BERT_LARGE_512X384_FP32_JAX,
+    jax_models.BERT_LARGE_1024X384_FP32_JAX,
+    jax_models.BERT_LARGE_1280X384_FP32_JAX,
+]
+
+# GPU model groups.
+
 CUDA_MODELS = [
     tf_models.EFFICIENTNET_V2_S_FP32,
     tf_models.MINILM_L12_H384_UNCASED_INT32_SEQLEN128,
@@ -138,7 +165,7 @@ CUDA_MODELS = [
     torch_models.EFFICIENTNET_B7_FP32_TORCH,
 ]
 
-CUDA_MODELS_LONG = RESNET50_TF_BATCHES + BERT_LARGE_TF_BATCHES + T5_LARGE_TF_BATCHES + BERT_LARGE_TORCH_BATCHES + RESNET50_TORCH_BATCHES
+CUDA_MODELS_LONG = RESNET50_TF_BATCHES + BERT_LARGE_TF_BATCHES + T5_LARGE_TF_BATCHES + BERT_LARGE_TORCH_BATCHES + RESNET50_TORCH_BATCHES + BERT_LARGE_JAX_BATCHES
 
 VULKAN_MODELS = [
     torch_models.MODEL_CLIP_TEXT_SEQLEN64_FP32_TORCH,

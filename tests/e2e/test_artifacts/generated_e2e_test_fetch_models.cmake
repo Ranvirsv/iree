@@ -627,3 +627,93 @@ iree_fetch_artifact(
     "${ROOT_ARTIFACTS_DIR}/model_fd05da43-5e37-4fa0-88f8-3ceec1682345-batch-2048_Resnet50PTBatch2048.mlir"
   UNPACK
 )
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-1"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_1/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-1_BertLargeJAXBatch1.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-16"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_16/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-16_BertLargeJAXBatch16.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-24"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_24/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-24_BertLargeJAXBatch24.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-32"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_32/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-32_BertLargeJAXBatch32.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-48"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_48/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-48_BertLargeJAXBatch48.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-64"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_64/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-64_BertLargeJAXBatch64.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-512"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_512/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-512_BertLargeJAXBatch512.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-1024"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_1024/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-1024_BertLargeJAXBatch1024.mlirbc"
+  UNPACK
+)
+
+iree_fetch_artifact(
+  NAME
+    "model-f76dc3a5-3379-49ab-85e5-744ff5167310-batch-1280"
+  SOURCE_URL
+    "https://storage.googleapis.com/iree-model-artifacts/jax/jax_models_0.4.10_1684283564/BERT_LARGE/batch_1280/stablehlo.mlirbc"
+  OUTPUT
+    "${ROOT_ARTIFACTS_DIR}/model_f76dc3a5-3379-49ab-85e5-744ff5167310-batch-1280_BertLargeJAXBatch1280.mlirbc"
+  UNPACK
+)
